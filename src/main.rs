@@ -1,7 +1,7 @@
 mod cube;
 
 use crate::cube::{Color, Cube, CubeFace, Face, Rotation, NUM_SIDES};
-use kiss3d::camera::ArcBall;
+use kiss3d::camera::{ArcBall, Camera};
 use kiss3d::light::Light;
 use kiss3d::nalgebra::{Point3, Translation3, UnitQuaternion, Vector3};
 use kiss3d::resource::Mesh;
@@ -128,45 +128,47 @@ fn main() {
     // let mut origin = window.add_sphere(0.1);
     // origin.set_color(0.0, 1.0, 0.0);
 
-    let mut cube = Cube::new([
-        Face::new([
-            [Color::White, Color::White, Color::White],
-            [Color::White, Color::White, Color::White],
-            [Color::White, Color::White, Color::White],
-        ]),
-        Face::new([
-            [Color::Red, Color::Red, Color::Red],
-            [Color::Red, Color::Red, Color::Green],
-            [Color::Yellow, Color::Orange, Color::Green],
-        ]),
-        Face::new([
-            [Color::Blue, Color::Blue, Color::Blue],
-            [Color::Red, Color::Blue, Color::Yellow],
-            [Color::Red, Color::Blue, Color::Orange],
-        ]),
-        Face::new([
-            [Color::Yellow, Color::Yellow, Color::Blue],
-            [Color::Blue, Color::Yellow, Color::Green],
-            [Color::Red, Color::Green, Color::Orange],
-        ]),
-        Face::new([
-            [Color::Orange, Color::Orange, Color::Orange],
-            [Color::Orange, Color::Orange, Color::Red],
-            [Color::Yellow, Color::Orange, Color::Green],
-        ]),
-        Face::new([
-            [Color::Green, Color::Green, Color::Green],
-            [Color::Blue, Color::Green, Color::Yellow],
-            [Color::Yellow, Color::Yellow, Color::Blue],
-        ]),
-    ]);
-    cube.rotate_face(CubeFace::Front, Rotation::Counterclockwise);
+    // let mut cube = Cube::new([
+    //     Face::new([
+    //         [Color::White, Color::White, Color::White],
+    //         [Color::White, Color::White, Color::White],
+    //         [Color::White, Color::White, Color::White],
+    //     ]),
+    //     Face::new([
+    //         [Color::Red, Color::Red, Color::Red],
+    //         [Color::Red, Color::Red, Color::Green],
+    //         [Color::Yellow, Color::Orange, Color::Green],
+    //     ]),
+    //     Face::new([
+    //         [Color::Blue, Color::Blue, Color::Blue],
+    //         [Color::Red, Color::Blue, Color::Yellow],
+    //         [Color::Red, Color::Blue, Color::Orange],
+    //     ]),
+    //     Face::new([
+    //         [Color::Yellow, Color::Yellow, Color::Blue],
+    //         [Color::Blue, Color::Yellow, Color::Green],
+    //         [Color::Red, Color::Green, Color::Orange],
+    //     ]),
+    //     Face::new([
+    //         [Color::Orange, Color::Orange, Color::Orange],
+    //         [Color::Orange, Color::Orange, Color::Red],
+    //         [Color::Yellow, Color::Orange, Color::Green],
+    //     ]),
+    //     Face::new([
+    //         [Color::Green, Color::Green, Color::Green],
+    //         [Color::Blue, Color::Green, Color::Yellow],
+    //         [Color::Yellow, Color::Yellow, Color::Blue],
+    //     ]),
+    // ]);
+    let mut cube = Cube::default();
+    cube.randomize(50, 100);
+    println!("{:?}", cube.solve_recursive());
     add_cube(&mut window, &cube);
     window.set_light(Light::StickToCamera);
-    let mut cam = ArcBall::new(Point3::new(0.0f32, 0.0, 15.0), Point3::origin());
+    let mut cam = ArcBall::new(Point3::new(10.0, 7.0, 10.0), Point3::origin());
     // let rot = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.014);
 
     while window.render_with_camera(&mut cam) {
-        // println!("Cam location: {:?}", cam.eye());
+        println!("Cam location: {:?}", cam.eye());
     }
 }
