@@ -1,6 +1,12 @@
-mod cube;
+extern crate core;
 
-use crate::cube::{Color, Cube, CubeFace, Face, Rotation, NUM_SIDES};
+mod cube;
+mod cube3d;
+
+use crate::cube::Rotation::{Clockwise, Counterclockwise};
+use crate::cube::{Color, CUBE_SIZE, NUM_SIDES};
+use crate::cube3d::Cube;
+use crate::cube3d::CubeFace::{Front, Left, Right};
 use kiss3d::camera::{ArcBall, Camera};
 use kiss3d::light::Light;
 use kiss3d::nalgebra::{Point3, Translation3, UnitQuaternion, Vector3};
@@ -19,9 +25,9 @@ const TRANSLATIONS: [Translation3<f32>; NUM_SIDES] = [
     Translation3::new(0.0, 3.0, 0.0),
     Translation3::new(-3.0, 0.0, 0.0),
     Translation3::new(0.0, 0.0, 3.0),
-    Translation3::new(0.0, -3.0, 0.0),
     Translation3::new(3.0, 0.0, 0.0),
     Translation3::new(0.0, 0.0, -3.0),
+    Translation3::new(0.0, -3.0, 0.0),
 ];
 
 /// A simple struct for storing the normal direction and "up" direction of each face.
@@ -48,16 +54,16 @@ const ROTATIONS: [FaceDirection; NUM_SIDES] = [
         up: Vector3::new(0.0, 1.0, 0.0),
     },
     FaceDirection {
-        direction: Vector3::new(0.0, -1.0, 0.0),
-        up: Vector3::new(0.0, 0.0, 1.0),
-    },
-    FaceDirection {
         direction: Vector3::new(1.0, 0.0, 0.0),
         up: Vector3::new(0.0, 1.0, 0.0),
     },
     FaceDirection {
         direction: Vector3::new(0.0, 0.0, -1.0),
         up: Vector3::new(0.0, 1.0, 0.0),
+    },
+    FaceDirection {
+        direction: Vector3::new(0.0, -1.0, 0.0),
+        up: Vector3::new(0.0, 0.0, 1.0),
     },
 ];
 
@@ -81,11 +87,11 @@ const STICKER_SIZE: f32 = CUBELET_SIZE - STICKER_BORDER;
 /// Add one face to the scene. This is called for each face by [add_cube].
 fn add_face(
     window: &mut Window,
-    face: &Face,
+    face: &[[Color; CUBE_SIZE]; CUBE_SIZE],
     translation: &Translation3<f32>,
     rotation: &FaceDirection,
 ) {
-    for (row_idx, row) in face.get_row_iter().enumerate() {
+    for (row_idx, row) in face.iter().enumerate() {
         for (col_idx, color) in row.iter().enumerate() {
             window.draw_line(
                 &Point3::new(-CUBELET_SIZE, -CUBELET_SIZE, 0.0),
@@ -106,8 +112,8 @@ fn add_face(
             set_color(&mut c, color);
             c.enable_backface_culling(true);
             c.append_translation(&Translation3::new(
-                col_idx as f32 * 2.0 - face.get_size() as f32 + 1.0,
-                face.get_size() as f32 - 1.0 - (row_idx as f32 * 2.0),
+                col_idx as f32 * 2.0 - CUBE_SIZE as f32 + 1.0,
+                CUBE_SIZE as f32 - 1.0 - (row_idx as f32 * 2.0),
                 0.0,
             ));
             let q = UnitQuaternion::face_towards(&rotation.direction, &rotation.up);
@@ -118,7 +124,7 @@ fn add_face(
 }
 
 fn add_cube(window: &mut Window, cube: &Cube) {
-    for (idx, face) in cube.get_face_iter().enumerate() {
+    for (idx, face) in cube.facelets.iter().enumerate() {
         add_face(window, &face, &TRANSLATIONS[idx], &ROTATIONS[idx]);
     }
 }
@@ -128,47 +134,49 @@ fn main() {
     // let mut origin = window.add_sphere(0.1);
     // origin.set_color(0.0, 1.0, 0.0);
 
-    // let mut cube = Cube::new([
-    //     Face::new([
-    //         [Color::White, Color::White, Color::White],
-    //         [Color::White, Color::White, Color::White],
-    //         [Color::White, Color::White, Color::White],
-    //     ]),
-    //     Face::new([
-    //         [Color::Red, Color::Red, Color::Red],
-    //         [Color::Red, Color::Red, Color::Green],
-    //         [Color::Yellow, Color::Orange, Color::Green],
-    //     ]),
-    //     Face::new([
-    //         [Color::Blue, Color::Blue, Color::Blue],
-    //         [Color::Red, Color::Blue, Color::Yellow],
-    //         [Color::Red, Color::Blue, Color::Orange],
-    //     ]),
-    //     Face::new([
-    //         [Color::Yellow, Color::Yellow, Color::Blue],
-    //         [Color::Blue, Color::Yellow, Color::Green],
-    //         [Color::Red, Color::Green, Color::Orange],
-    //     ]),
-    //     Face::new([
-    //         [Color::Orange, Color::Orange, Color::Orange],
-    //         [Color::Orange, Color::Orange, Color::Red],
-    //         [Color::Yellow, Color::Orange, Color::Green],
-    //     ]),
-    //     Face::new([
-    //         [Color::Green, Color::Green, Color::Green],
-    //         [Color::Blue, Color::Green, Color::Yellow],
-    //         [Color::Yellow, Color::Yellow, Color::Blue],
-    //     ]),
-    // ]);
-    let mut cube = Cube::default();
-    cube.randomize(50, 100);
-    println!("{:?}", cube.solve_recursive());
+    let mut cube = Cube::new([
+        [
+            [Color::White, Color::White, Color::White],
+            [Color::White, Color::White, Color::White],
+            [Color::White, Color::White, Color::White],
+        ],
+        [
+            [Color::Green, Color::Green, Color::Green],
+            [Color::Blue, Color::Green, Color::Yellow],
+            [Color::Yellow, Color::Yellow, Color::Blue],
+        ],
+        [
+            [Color::Red, Color::Red, Color::Red],
+            [Color::Red, Color::Red, Color::Green],
+            [Color::Yellow, Color::Orange, Color::Green],
+        ],
+        [
+            [Color::Blue, Color::Blue, Color::Blue],
+            [Color::Red, Color::Blue, Color::Yellow],
+            [Color::Red, Color::Blue, Color::Orange],
+        ],
+        [
+            [Color::Orange, Color::Orange, Color::Orange],
+            [Color::Orange, Color::Orange, Color::Red],
+            [Color::Yellow, Color::Orange, Color::Green],
+        ],
+        [
+            [Color::Red, Color::Blue, Color::Yellow],
+            [Color::Green, Color::Yellow, Color::Yellow],
+            [Color::Orange, Color::Green, Color::Blue],
+        ],
+    ]);
+    // let mut cube = Cube::default();
+    cube.rotate_face(Front, Clockwise);
+    cube.rotate_face(Left, Counterclockwise);
+    // cube.randomize(50, 100);
+    // println!("{:?}", cube.solve_recursive());
     add_cube(&mut window, &cube);
     window.set_light(Light::StickToCamera);
     let mut cam = ArcBall::new(Point3::new(10.0, 7.0, 10.0), Point3::origin());
     // let rot = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.014);
 
     while window.render_with_camera(&mut cam) {
-        println!("Cam location: {:?}", cam.eye());
+        // println!("Cam location: {:?}", cam.eye());
     }
 }

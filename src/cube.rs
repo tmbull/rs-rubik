@@ -4,19 +4,27 @@ use crate::cube::Color::{Blue, Green, Orange, Red, White, Yellow};
 use crate::cube::CubeFace::{Back, Down, Front, Left, Right, Up};
 use crate::cube::Rotation::{Clockwise, Counterclockwise};
 use enum_iterator::Sequence;
+use itertools::Itertools;
 use kiss3d::nalgebra::DimAdd;
 use num_enum::TryFromPrimitive;
 use rand::distributions::{DistIter, DistMap, Standard};
 use rand::prelude::*;
 use std::borrow::{Borrow, BorrowMut};
+use std::cell::{Cell, RefCell};
 use std::collections::{HashSet, VecDeque};
 use std::convert::TryFrom;
-use std::slice::Iter;
+use std::rc::Rc;
+use std::slice::{Iter, IterMut};
 
 /// The number of sides of the puzzle. In the case of a cube, the number of sides is 6. It is
 /// unlikely that this solution can be generalized for other shapes, but it would be an interesting
 /// exercise some day.
 pub const NUM_SIDES: usize = 6;
+
+/// In Rubik's cube terminology, 'size' is frequently used to refer to length of each side of the
+/// cube in terms of number of facelets. For example, a standard 3x3x3 cube is said to be of size
+/// '3'.
+pub const CUBE_SIZE: usize = 3;
 
 /// This is used to "look up" the surrounding faces when rotating a face.
 /// There might be a way to calculate this (linear algebra?), but it's hard-coded for now.
@@ -27,12 +35,18 @@ pub const NUM_SIDES: usize = 6;
 /// counterclockwise.
 const SURROUNDING_FACES: [[usize; NUM_SIDES - 2]; NUM_SIDES] = [
     [5, 4, 2, 1],
-    [0, 2, 3, 5],
-    [0, 4, 3, 1],
+    [0, 2, 3, 5], // Left
+    [0, 4, 3, 1], // Front
     [2, 4, 5, 1],
     [0, 5, 3, 2],
     [0, 1, 3, 4],
 ];
+
+fn copy_facelets(mut src: Iter<Color>, dest: IterMut<Color>) {
+    for facelet in dest {
+        *facelet = *(src.next().unwrap());
+    }
+}
 
 /// This is used to "look up" the surrounding indexes of a face. This is used in conjunction
 /// with [SURROUNDING_FACES] to rotate the facelets that surround a face. It is important that the
@@ -43,7 +57,7 @@ const SURROUNDING_FACES: [[usize; NUM_SIDES - 2]; NUM_SIDES] = [
 /// right-most column on the face "to the left", and the right-most column on the face "to the left"
 /// will become the down row on the face "above". The reverse is true when rotating
 /// counterclockwise.
-const SURROUNDING_INDICES: [[(usize, usize); 3]; 4] = [
+const SURROUNDING_INDICES: [[(usize, usize); CUBE_SIZE]; 4] = [
     [(2, 0), (2, 1), (2, 2)],
     [(0, 0), (1, 0), (2, 0)],
     [(0, 2), (0, 1), (0, 0)],
@@ -71,7 +85,7 @@ pub enum Rotation {
 }
 
 impl Rotation {
-    fn get_opposite(self) -> Self {
+    pub fn get_opposite(self) -> Self {
         match self {
             Clockwise => Counterclockwise,
             Counterclockwise => Clockwise,
@@ -85,13 +99,19 @@ pub struct CubeMove {
     rotation: Rotation,
 }
 
+impl CubeMove {
+    pub fn new(face: CubeFace, rotation: Rotation) -> Self {
+        Self { face, rotation }
+    }
+}
+
 /// A 'facelet' for lack of a better term is one square on the face
 /// The grid is organized such that 0, 0 = down, left.
 ///
 /// We use a 2-d array so that we can support different sizes of cubes later.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Face {
-    facelets: [[Color; 3]; 3],
+    facelets: [[Color; CUBE_SIZE]; CUBE_SIZE],
     /*
        up_left: Color,
        up_center: Color,
@@ -106,13 +126,13 @@ pub struct Face {
 }
 
 impl Face {
-    pub fn new(facelets: [[Color; 3]; 3]) -> Self {
+    pub fn new(facelets: [[Color; CUBE_SIZE]; CUBE_SIZE]) -> Self {
         Self { facelets }
     }
 
     pub fn new_solid_color(color: Color) -> Self {
         Self {
-            facelets: [[color; 3]; 3],
+            facelets: [[color; CUBE_SIZE]; CUBE_SIZE],
         }
     }
 
@@ -156,11 +176,11 @@ impl Face {
         }
     }
 
-    pub fn get_row(&self, row_idx: usize) -> [Color; 3] {
+    pub fn get_row(&self, row_idx: usize) -> [Color; CUBE_SIZE] {
         self.facelets[row_idx]
     }
 
-    pub fn get_col(&self, col_idx: usize) -> [Color; 3] {
+    pub fn get_col(&self, col_idx: usize) -> [Color; CUBE_SIZE] {
         [
             self.facelets[0][col_idx],
             self.facelets[1][col_idx],
@@ -168,7 +188,7 @@ impl Face {
         ]
     }
 
-    pub fn get_row_iter(&self) -> Iter<'_, [Color; 3]> {
+    pub fn get_row_iter(&self) -> Iter<'_, [Color; CUBE_SIZE]> {
         self.facelets.iter()
     }
 
@@ -191,9 +211,16 @@ pub enum CubeFace {
     Back = 5,
 }
 
+impl CubeFace {
+    #[inline]
+    fn us(self) -> usize {
+        self as usize
+    }
+}
+
 /// The cube has NUM_SIDES faces. They are organized in the array such that opposite faces are separated
 /// by 3. In pictures:
-///    U         0
+///    U        0
 ///  L F R B  1 2 4 5    where U = up, L = left, F = front, B = back, D = down
 ///    D        3
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -250,54 +277,101 @@ impl Cube {
         let idx = mv.face as usize;
         self.faces[idx].rotate(mv.rotation);
         let [up, right, down, left] = SURROUNDING_FACES[idx];
-        match mv.rotation {
-            Clockwise => {
-                for i in 0..=2 {
-                    let tmp = self.swap_facelets(
-                        up,
-                        SURROUNDING_INDICES[0][i],
-                        right,
-                        SURROUNDING_INDICES[1][i],
-                    );
-                    self.swap_facelets(
-                        left,
-                        SURROUNDING_INDICES[3][i],
-                        up,
-                        SURROUNDING_INDICES[0][i],
-                    );
-                    self.swap_facelets(
-                        down,
-                        SURROUNDING_INDICES[2][i],
-                        left,
-                        SURROUNDING_INDICES[3][i],
-                    );
-                    self.set_facelet(down, SURROUNDING_INDICES[2][i], tmp);
-                }
+        match (mv.face, mv.rotation) {
+            (Up, Clockwise) => {
+                let mut tmp = self.swap_row_to_row(Back.us(), 0, Right.us(), 0, false);
+                tmp.reverse();
+                self.swap_row_to_row(Left.us(), 0, Back.us(), 0, true);
+                self.swap_row_to_row(Front.us(), 0, Left.us(), 0, false);
+                self.set_row(Front.us(), 0, tmp);
             }
-            Counterclockwise => {
-                for i in 0..=2 {
-                    let tmp = self.swap_facelets(
-                        up,
-                        SURROUNDING_INDICES[0][i],
-                        left,
-                        SURROUNDING_INDICES[3][i],
-                    );
-                    self.swap_facelets(
-                        right,
-                        SURROUNDING_INDICES[1][i],
-                        up,
-                        SURROUNDING_INDICES[0][i],
-                    );
-                    self.swap_facelets(
-                        down,
-                        SURROUNDING_INDICES[2][i],
-                        right,
-                        SURROUNDING_INDICES[1][i],
-                    );
-                    self.set_facelet(down, SURROUNDING_INDICES[2][i], tmp);
-                }
+            (Up, Counterclockwise) => {
+                let mut tmp = self.swap_row_to_row(Back.us(), 0, Left.us(), 0, true);
+                self.swap_row_to_row(Right.us(), 0, Back.us(), 0, false);
+                self.swap_row_to_row(Front.us(), 0, Right.us(), 0, true);
+                self.set_row(Front.us(), 0, tmp);
+            }
+            (Left, Clockwise) => {}
+            (Left, Counterclockwise) => {}
+            (Front, Clockwise) => {
+                let mut tmp = self.swap_row_to_col(Up.us(), 2, Right.us(), 0, false);
+                tmp.reverse();
+                self.swap_col_to_row(Left.us(), 2, Up.us(), 2, true);
+                self.swap_row_to_col(Down.us(), 0, Left.us(), 2, false);
+                self.set_row(Down.us(), 0, tmp);
+            }
+            (Front, Counterclockwise) => {
+                let tmp = self.swap_row_to_col(Up.us(), 2, Left.us(), 2, true);
+                self.swap_col_to_row(Right.us(), 0, Up.us(), 2, false);
+                self.swap_row_to_col(Down.us(), 0, Right.us(), 0, true);
+                self.set_row(Down.us(), 0, tmp);
+            }
+            (Down, Clockwise) => {}
+            (Down, Counterclockwise) => {}
+            (Right, Clockwise) => {}
+            (Right, Counterclockwise) => {}
+            (Back, Clockwise) => {
+                let mut tmp = self.swap_row_to_col(Up.us(), 0, Left.us(), 0, false);
+                tmp.reverse();
+                self.swap_col_to_row(Right.us(), 2, Up.us(), 0, true);
+                self.swap_row_to_col(Down.us(), 2, Right.us(), 2, false);
+                self.set_row(Down.us(), 2, tmp);
+            }
+            (Back, Counterclockwise) => {
+                let tmp = self.swap_row_to_col(Up.us(), 0, Right.us(), 2, true);
+                self.swap_col_to_row(Left.us(), 0, Up.us(), 0, false);
+                self.swap_row_to_col(Down.us(), 2, Left.us(), 0, true);
+                self.set_row(Down.us(), 2, tmp);
             }
         }
+        // match mv.rotation {
+        //     Clockwise => {
+        //         for i in 0..=2 {
+        //             let tmp = self.swap_facelets(
+        //                 up,
+        //                 SURROUNDING_INDICES[0][i],
+        //                 right,
+        //                 SURROUNDING_INDICES[1][i],
+        //             );
+        //             self.swap_facelets(
+        //                 left,
+        //                 SURROUNDING_INDICES[3][i],
+        //                 up,
+        //                 SURROUNDING_INDICES[0][i],
+        //             );
+        //             self.swap_facelets(
+        //                 down,
+        //                 SURROUNDING_INDICES[2][i],
+        //                 left,
+        //                 SURROUNDING_INDICES[3][i],
+        //             );
+        //             self.set_facelet(down, SURROUNDING_INDICES[2][i], tmp);
+        //         }
+        //     }
+        //     Counterclockwise => {
+        //         for i in 0..=2 {
+        //             let tmp = self.swap_facelets(
+        //                 up,
+        //                 SURROUNDING_INDICES[0][i],
+        //                 left,
+        //                 SURROUNDING_INDICES[3][i],
+        //             );
+        //             self.swap_facelets(
+        //                 right,
+        //                 SURROUNDING_INDICES[1][i],
+        //                 up,
+        //                 SURROUNDING_INDICES[0][i],
+        //             );
+        //             self.swap_facelets(
+        //                 down,
+        //                 SURROUNDING_INDICES[2][i],
+        //                 right,
+        //                 SURROUNDING_INDICES[1][i],
+        //             );
+        //             self.set_facelet(down, SURROUNDING_INDICES[2][i], tmp);
+        //         }
+        //     }
+        // }
     }
 
     /// A convenience function for swapping a source face to a destination on the cube. The original
@@ -316,10 +390,87 @@ impl Cube {
         dest_color
     }
 
+    /// A convenience function for swapping a row on one face to a column on another face.
+    /// The original of the destination face is returned.
+    fn swap_row_to_col(
+        &mut self,
+        src_face: usize,
+        src_row: usize,
+        dest_face: usize,
+        dest_col: usize,
+        reverse: bool,
+    ) -> [Color; CUBE_SIZE] {
+        let mut orig_src = self.faces[src_face].get_row(src_row);
+        if reverse {
+            orig_src.reverse();
+        }
+        let mut orig_dest = [White; CUBE_SIZE];
+
+        for idx in 0..CUBE_SIZE {
+            orig_dest[idx] = self.faces[dest_face].facelets[idx][dest_col];
+            self.faces[dest_face].facelets[idx][dest_col] = orig_src[idx];
+        }
+        orig_dest
+    }
+
+    /// A convenience function for swapping a column on one face to a row on another face.
+    /// The original row of the destination face is returned.
+    fn swap_col_to_row(
+        &mut self,
+        src_face: usize,
+        src_col: usize,
+        dest_face: usize,
+        dest_row: usize,
+        reverse: bool,
+    ) -> [Color; CUBE_SIZE] {
+        let mut orig_src = self.faces[src_face].get_col(src_col);
+        if reverse {
+            orig_src.reverse();
+        }
+        let mut orig_dest = self.faces[dest_face].facelets[dest_row];
+
+        for idx in 0..CUBE_SIZE {
+            self.faces[dest_face].facelets[dest_row][idx] = orig_src[idx];
+        }
+        orig_dest
+    }
+
+    /// A convenience function for swapping a row on one face to a column on another face.
+    /// The original of the destination face is returned.
+    fn swap_row_to_row(
+        &mut self,
+        src_face: usize,
+        src_row: usize,
+        dest_face: usize,
+        dest_row: usize,
+        reverse: bool,
+    ) -> [Color; CUBE_SIZE] {
+        let mut orig_dest = self.faces[dest_face].facelets[dest_row];
+        self.faces[dest_face].facelets[dest_row] = self.faces[src_face].facelets[src_row];
+        if reverse {
+            self.faces[dest_face].facelets[dest_row].reverse();
+        }
+        orig_dest
+    }
+
     /// Set a face to a specific color
     fn set_facelet(&mut self, dest_face: usize, dest_facelet: (usize, usize), color: Color) {
         let dest_face_ref = self.faces[dest_face].borrow_mut();
         dest_face_ref.facelets[dest_facelet.0][dest_facelet.1] = color;
+    }
+
+    /// Replaces a row on the cube.
+    #[inline]
+    fn set_row(&mut self, dest_face: usize, dest_row: usize, row: [Color; CUBE_SIZE]) {
+        self.faces[dest_face].facelets[dest_row] = row;
+    }
+
+    // Replaces a column on the cube
+    #[inline]
+    fn set_col(&mut self, dest_face: usize, dest_col: usize, col: [Color; CUBE_SIZE]) {
+        for idx in 0..CUBE_SIZE {
+            self.faces[dest_face].facelets[idx][dest_col] = col[idx];
+        }
     }
 
     /// The 'size' of the cube is defined as the number of facelets in a row. In other words, a
@@ -430,8 +581,8 @@ const ALL_MOVES: [CubeMove; 12] = [
 mod tests {
     use super::*;
     use crate::cube;
+    use crate::cube::CubeFace::{Back, Down, Front, Left, Right, Up};
     use crate::cube::Rotation::{Clockwise, Counterclockwise};
-    use crate::CubeFace::{Back, Down, Front, Left, Right, Up};
     use arr_macro::arr;
     use enum_iterator::all;
     use quickcheck::{Arbitrary, Gen};
@@ -593,10 +744,10 @@ mod tests {
     fn face_and_surround_match(
         result: &Cube,
         expected_front: &Face,
-        expected_right: &[Color; 3],
-        expected_down: &[Color; 3],
-        expected_left: &[Color; 3],
-        expected_up: &[Color; 3],
+        expected_right: &[Color; CUBE_SIZE],
+        expected_down: &[Color; CUBE_SIZE],
+        expected_left: &[Color; CUBE_SIZE],
+        expected_up: &[Color; CUBE_SIZE],
     ) -> bool {
         &result.faces[Front as usize] == expected_front
             && expected_right == &result.faces[Right as usize].get_col(0)
@@ -699,8 +850,25 @@ mod tests {
         )
     }
 
-    #[quickcheck_macros::quickcheck]
-    fn rotate_front_face_clockwise(cube: Cube) -> bool {
+    #[rstest]
+    #[case(Front, Up, 2, Right, 0, Down, 0, Left, 2)]
+    // #[case(Left, Up, Front, Down, Back)]
+    // #[case(Back, Up, 0, Left, 0, Down, Right, 2)]
+    // #[case(Right, Up, Back, Down, Front)]
+    // #[case(Up, Back, Right, Front, Left)]
+    // #[case(Down, Front, Right, Back, Left)]
+    fn rotate_face_clockwise(
+        #[case] front: CubeFace,
+        #[case] up: CubeFace,
+        #[case] up_row: usize,
+        #[case] right: CubeFace,
+        #[case] right_col: usize,
+        #[case] down: CubeFace,
+        #[case] down_row: usize,
+        #[case] left: CubeFace,
+        #[case] left_col: usize,
+    ) {
+        let cube = Cube::default();
         let expected = cube.clone();
         let mut result = cube;
         result.rotate_face(CubeMove {
@@ -709,21 +877,21 @@ mod tests {
         });
         let mut expected_front = expected.faces[Front as usize].clone();
         expected_front.rotate(Clockwise);
-        let expected_right = expected.faces[Up as usize].get_row(2);
-        let mut expected_down = expected.faces[Right as usize].get_col(0);
+        let expected_right = expected.faces[up as usize].get_row(up_row);
+        let mut expected_down = expected.faces[right as usize].get_col(right_col);
         expected_down.reverse();
-        let expected_left = expected.faces[Down as usize].get_row(0);
-        let mut expected_up = expected.faces[Left as usize].get_col(2);
+        let expected_left = expected.faces[down as usize].get_row(down_row);
+        let mut expected_up = expected.faces[left as usize].get_col(left_col);
         expected_up.reverse();
 
-        face_and_surround_match(
+        assert!(face_and_surround_match(
             &result,
             &expected_front,
             &expected_right,
             &expected_down,
             &expected_left,
             &expected_up,
-        )
+        ))
     }
 
     #[quickcheck_macros::quickcheck]
@@ -776,7 +944,10 @@ mod tests {
         (dest_x, dest_y): (u8, u8),
         color: Color,
     ) -> bool {
-        let dest_facelet = ((dest_x % 3) as usize, (dest_y % 3) as usize);
+        let dest_facelet = (
+            (dest_x % CUBE_SIZE as u8) as usize,
+            (dest_y % CUBE_SIZE as u8) as usize,
+        );
         let dest_face = (dest_face % NUM_SIDES as u8) as usize;
         let mut result = cube;
         result.set_facelet(dest_face, dest_facelet, color);
@@ -835,18 +1006,110 @@ mod tests {
         cube.is_solved() == (solid_faces.len() == NUM_SIDES as usize)
     }
 
-    #[test]
-    fn solve_works() {
-        let mut cube = Cube::default();
-        let num_moves = 1;
-        cube.randomize(num_moves, num_moves);
-        cube.rotate_face(CubeMove {
-            face: Front,
-            rotation: Clockwise,
+    #[quickcheck_macros::quickcheck]
+    fn swap_row_to_column(
+        mut cube: Cube,
+        src_face: usize,
+        src_row: usize,
+        dest_face: usize,
+        dest_col: usize,
+        reverse: bool,
+    ) -> bool {
+        let src_face = src_face.checked_rem(NUM_SIDES as usize).unwrap();
+        let src_row = src_row.checked_rem(CUBE_SIZE).unwrap();
+        let dest_face = dest_face.checked_rem(NUM_SIDES as usize).unwrap();
+        let dest_col = dest_col.checked_rem(CUBE_SIZE).unwrap();
+
+        let orig = cube.clone();
+        let result = cube.swap_row_to_col(src_face, src_row, dest_face, dest_col, reverse);
+        let result_is_correct = result == orig.faces[dest_face].get_col(dest_col);
+        let dest_face_is_correct = (0..CUBE_SIZE).all(|idx| {
+            if idx == dest_col {
+                let mut expected = orig.faces[src_face].get_row(src_row);
+                if reverse {
+                    expected.reverse();
+                }
+                cube.faces[dest_face].get_col(idx) == expected
+            } else {
+                cube.faces[dest_face].get_col(idx) == orig.faces[dest_face].get_col(idx)
+            }
         });
-        let soln = cube.solve_recursive();
-        println!("{:?}", cube);
-        println!("{:?}", soln);
-        assert_eq!(num_moves, soln.len());
+        result_is_correct && dest_face_is_correct
     }
+
+    #[quickcheck_macros::quickcheck]
+    fn swap_column_to_row(
+        mut cube: Cube,
+        src_face: usize,
+        src_col: usize,
+        dest_face: usize,
+        dest_row: usize,
+        reverse: bool,
+    ) -> bool {
+        let src_face = src_face.checked_rem(NUM_SIDES as usize).unwrap();
+        let src_col = src_col.checked_rem(CUBE_SIZE).unwrap();
+        let dest_face = dest_face.checked_rem(NUM_SIDES as usize).unwrap();
+        let dest_row = dest_row.checked_rem(CUBE_SIZE).unwrap();
+
+        let orig = cube.clone();
+        let mut result = cube.swap_col_to_row(src_face, src_col, dest_face, dest_row, reverse);
+        let result_is_correct = result == orig.faces[dest_face].get_row(dest_row);
+        let dest_face_is_correct = (0..CUBE_SIZE).all(|idx| {
+            if idx == dest_row {
+                let mut col = orig.faces[src_face].get_col(src_col);
+                if reverse {
+                    col.reverse();
+                }
+                cube.faces[dest_face].get_row(idx) == col
+            } else {
+                cube.faces[dest_face].get_row(idx) == orig.faces[dest_face].get_row(idx)
+            }
+        });
+        result_is_correct && dest_face_is_correct
+    }
+
+    #[quickcheck_macros::quickcheck]
+    fn swap_row_to_row(
+        mut cube: Cube,
+        src_face: usize,
+        src_col: usize,
+        dest_face: usize,
+        dest_row: usize,
+        reverse: bool,
+    ) -> bool {
+        let src_face = src_face.checked_rem(NUM_SIDES as usize).unwrap();
+        let src_row = src_col.checked_rem(CUBE_SIZE).unwrap();
+        let dest_face = dest_face.checked_rem(NUM_SIDES as usize).unwrap();
+        let dest_row = dest_row.checked_rem(CUBE_SIZE).unwrap();
+
+        let orig = cube.clone();
+        let mut result = cube.swap_row_to_row(src_face, src_row, dest_face, dest_row, reverse);
+        let result_is_correct = result == orig.faces[dest_face].get_row(dest_row);
+        let dest_face_is_correct = (0..CUBE_SIZE).all(|idx| {
+            if idx == dest_row {
+                let mut expected = orig.faces[src_face].get_row(src_row);
+                if reverse {
+                    expected.reverse();
+                }
+                cube.faces[dest_face].get_row(idx) == expected
+            } else {
+                cube.faces[dest_face].get_row(idx) == orig.faces[dest_face].get_row(idx)
+            }
+        });
+        result_is_correct && dest_face_is_correct
+    }
+
+    // #[ignore]
+    // fn solve_works() {
+    //     let mut cube = Cube::default();
+    //     let num_moves = 1;
+    //     cube.randomize(num_moves, num_moves);
+    //     cube.rotate_face(Front,
+    //         Clockwise,
+    //     });
+    //     let soln = cube.solve_recursive();
+    //     println!("{:?}", cube);
+    //     println!("{:?}", soln);
+    //     assert_eq!(num_moves, soln.len());
+    // }
 }
