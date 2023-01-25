@@ -3,9 +3,22 @@ name = "rs-rubik"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+
+[[bin]]
+name = "solve"
+path = "src/solve.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bench]]
 name = "solve_benchmark"
+harness = false
+
+[[bench]]
+name = "randomize_benchmark"
 harness = false
 
 [dependencies]

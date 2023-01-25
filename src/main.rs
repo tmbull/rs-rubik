@@ -1,21 +1,19 @@
 extern crate core;
 
+mod array_cube;
 mod cube;
-mod cube3d;
 
-use crate::cube::Rotation::{Clockwise, Counterclockwise};
+use crate::array_cube::ArrayCube;
+use crate::cube::CubeFace::{Front, Left};
+use crate::cube::Direction::{Clockwise, Counterclockwise};
 use crate::cube::{Color, CUBE_SIZE, NUM_SIDES};
-use crate::cube3d::Cube;
-use crate::cube3d::CubeFace::{Front, Left, Right};
-use kiss3d::camera::{ArcBall, Camera};
+use kiss3d::camera::ArcBall;
 use kiss3d::light::Light;
 use kiss3d::nalgebra::{Point3, Translation3, UnitQuaternion, Vector3};
 use kiss3d::resource::Mesh;
 use kiss3d::scene::SceneNode;
 use kiss3d::window::Window;
-use std::borrow::BorrowMut;
 use std::cell::RefCell;
-use std::mem;
 use std::rc::Rc;
 
 /// We draw each face of the cube in the x-y plane and then move and rotate it into position. This
@@ -123,7 +121,7 @@ fn add_face(
     }
 }
 
-fn add_cube(window: &mut Window, cube: &Cube) {
+fn add_cube(window: &mut Window, cube: &ArrayCube) {
     for (idx, face) in cube.facelets.iter().enumerate() {
         add_face(window, &face, &TRANSLATIONS[idx], &ROTATIONS[idx]);
     }
@@ -134,7 +132,7 @@ fn main() {
     // let mut origin = window.add_sphere(0.1);
     // origin.set_color(0.0, 1.0, 0.0);
 
-    let mut cube = Cube::new([
+    let mut cube = ArrayCube::new([
         [
             [Color::White, Color::White, Color::White],
             [Color::White, Color::White, Color::White],
