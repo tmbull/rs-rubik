@@ -1,9 +1,11 @@
 use crate::cube::Color::*;
 use crate::cube::CubeFace::*;
 use crate::cube::Direction::{Clockwise, Counterclockwise};
-use crate::cube::{Color, Cube, CubeFace, Direction, ALL_MOVES, CUBE_SIZE, NUM_SIDES};
+use crate::cube::{Color, Cube, CubeFace, CubeMove, Direction, ALL_MOVES, CUBE_SIZE, NUM_SIDES};
+use kiss3d::ncollide3d::query::algorithms::gjk::directional_distance;
 use rand::{thread_rng, Rng};
-use std::collections::{HashSet, VecDeque};
+use std::collections::vec_deque::VecDeque;
+use std::collections::HashSet;
 use std::convert::TryFrom;
 
 /// The cube is represented as a 3-dimensional array. Each element in the array represents a
@@ -39,7 +41,8 @@ impl ArrayCube {
 
     /// Perform a single quarter-turn move on one face of the cube. Takes a face and a direction.
     /// The direction is with respect to the front of the face.
-    pub fn rotate_face(&mut self, face: CubeFace, direction: Direction) {
+    pub fn rotate_face(&mut self, cube_move: CubeMove) {
+        let CubeMove { face, direction } = cube_move;
         match face {
             Up => self.rotate_row(0, direction),
             Left => self.rotate_column_lr(0, direction),
@@ -158,20 +161,20 @@ impl ArrayCube {
     /// The naive solution is a simple BFS. The cube has 12 possible moves (rotate each face in
     /// either direction). At each iteration, we check if the cube is solved. Then we perform all
     /// 12 moves, and recurse into the resulting cubes.
-    pub fn solve_bfs_nocache(&self) -> Vec<(CubeFace, Direction)> {
-        let mut queue: VecDeque<(ArrayCube, Vec<(CubeFace, Direction)>)> = VecDeque::new();
-        let moves: Vec<(CubeFace, Direction)> = Vec::new();
+    pub fn solve_bfs_nocache(&self) -> Vec<CubeMove> {
+        let mut queue: VecDeque<(ArrayCube, Vec<CubeMove>)> = VecDeque::new();
+        let moves: Vec<CubeMove> = Vec::new();
 
         queue.push_front((self.clone(), moves));
         while let Some((cube, moves)) = queue.pop_front() {
             if cube.is_solved() {
                 return moves;
             }
-            for (face, dir) in ALL_MOVES {
+            for cubeMove in ALL_MOVES {
                 let mut cube = cube.clone();
-                cube.rotate_face(face, dir);
+                cube.rotate_face(cubeMove);
                 let mut moves = moves.clone();
-                moves.push((face, dir));
+                moves.push(cubeMove);
                 queue.push_back((cube, moves));
             }
         }
@@ -179,7 +182,7 @@ impl ArrayCube {
         return Vec::new();
     }
 
-    pub fn solve_iddfs(&self) -> Option<Vec<(CubeFace, Direction)>> {
+    pub fn solve_iddfs(&self) -> Option<Vec<CubeMove>> {
         for depth in 0..26 {
             let (found, remaining) = self.dls(Vec::new(), depth);
             if found != None {
@@ -192,11 +195,7 @@ impl ArrayCube {
         None
     }
 
-    fn dls(
-        &self,
-        moves: Vec<(CubeFace, Direction)>,
-        depth: u8,
-    ) -> (Option<Vec<(CubeFace, Direction)>>, bool) {
+    fn dls(&self, moves: Vec<CubeMove>, depth: u8) -> (Option<Vec<CubeMove>>, bool) {
         return if depth == 0 {
             if self.is_solved() {
                 (Some(moves), true)
@@ -205,11 +204,11 @@ impl ArrayCube {
             }
         } else {
             let mut any_remaining = false;
-            for (face, dir) in ALL_MOVES {
+            for cubeMove in ALL_MOVES {
                 let mut moves = moves.clone();
-                moves.push((face, dir));
+                moves.push(cubeMove);
                 let mut cube = self.clone();
-                cube.rotate_face(face, dir);
+                cube.rotate_face(cubeMove);
                 let (found, remaining) = cube.dls(moves, depth - 1);
                 if found != None {
                     return (found, true);
@@ -248,29 +247,17 @@ impl Cube for ArrayCube {
 
         return colors.len() == NUM_SIDES;
     }
-    /// Randomize a cube by performing a series of random rotations on the cube. The method takes a
-    /// minimum and maximum for the number of moves. The number of moves will be a random value
-    /// between the minimum and maximum. The face and rotation direction for each move will be
-    /// random.
-    fn randomize(&mut self, min_moves: usize, max_moves: usize) {
-        let mut rng = thread_rng();
-        let num_moves = rng.gen_range(min_moves..=max_moves);
-        // let mut moves = Vec::with_capacity(num_moves);
-        for _ in 0..num_moves {
-            let face = CubeFace::try_from(rng.gen_range(Up as u8..=Down as u8)).unwrap();
-            let rotation =
-                Direction::try_from(rng.gen_range(Clockwise as u8..=Counterclockwise as u8))
-                    .unwrap();
 
-            self.rotate_face(face, rotation);
-        }
+    fn cube_move(&mut self, cube_move: CubeMove) {
+        self.rotate_face(cube_move);
     }
+
     /// The naive solution is a simple BFS. The cube has 12 possible moves (rotate each face in
     /// either direction). At each iteration, we check if the cube is solved. Then we perform all
     /// 12 moves, and recurse into the resulting cubes.
-    fn solve(&self) -> Vec<(CubeFace, Direction)> {
-        let mut queue: VecDeque<(ArrayCube, Vec<(CubeFace, Direction)>)> = VecDeque::new();
-        let moves: Vec<(CubeFace, Direction)> = Vec::new();
+    fn solve(&self) -> Vec<CubeMove> {
+        let mut queue: VecDeque<(ArrayCube, Vec<CubeMove>)> = VecDeque::new();
+        let moves: Vec<CubeMove> = Vec::new();
         let mut tested: HashSet<ArrayCube> = HashSet::new();
         tested.insert(self.clone());
         queue.push_front((self.clone(), moves));
@@ -278,13 +265,13 @@ impl Cube for ArrayCube {
             if cube.is_solved() {
                 return moves;
             }
-            for (face, dir) in ALL_MOVES {
+            for cubeMove in ALL_MOVES {
                 let mut cube = cube.clone();
-                cube.rotate_face(face, dir);
+                cube.rotate_face(cubeMove);
                 if !tested.contains(&cube) {
                     tested.insert(cube.clone());
                     let mut moves = moves.clone();
-                    moves.push((face, dir));
+                    moves.push(cubeMove);
                     queue.push_back((cube, moves));
                 }
             }
@@ -344,7 +331,7 @@ mod tests {
     use crate::array_cube::{is_solid, new_solid_color, rotate_face_only, ArrayCube};
     use crate::cube::CubeFace::*;
     use crate::cube::Direction::{Clockwise, Counterclockwise};
-    use crate::cube::{Color, Cube, CubeFace, Direction, CUBE_SIZE};
+    use crate::cube::{Color, Cube, CubeFace, CubeMove, Direction, CUBE_SIZE};
     use arr_macro::arr;
     use enum_iterator::all;
     use quickcheck::{Arbitrary, Gen};
@@ -390,10 +377,10 @@ mod tests {
     fn rotate_cube_face_four_times_is_identity(cube: ArrayCube, face: CubeFace) -> bool {
         let expected = cube.clone();
         let mut result = cube;
-        result.rotate_face(face, Clockwise);
-        result.rotate_face(face, Clockwise);
-        result.rotate_face(face, Clockwise);
-        result.rotate_face(face, Clockwise);
+        result.rotate_face(CubeMove::new(face, Clockwise));
+        result.rotate_face(CubeMove::new(face, Clockwise));
+        result.rotate_face(CubeMove::new(face, Clockwise));
+        result.rotate_face(CubeMove::new(face, Clockwise));
 
         result == expected
     }
@@ -402,8 +389,8 @@ mod tests {
     fn rotate_clockwise_then_counterclockwise_is_identity(cube: ArrayCube, face: CubeFace) -> bool {
         let expected = cube.clone();
         let mut result = cube;
-        result.rotate_face(face, Clockwise);
-        result.rotate_face(face, Counterclockwise);
+        result.rotate_face(CubeMove::new(face, Clockwise));
+        result.rotate_face(CubeMove::new(face, Counterclockwise));
 
         result == expected
     }
@@ -414,11 +401,11 @@ mod tests {
         face: CubeFace,
     ) -> bool {
         let mut expected = cube.clone();
-        expected.rotate_face(face, Counterclockwise);
-        expected.rotate_face(face, Counterclockwise);
+        expected.rotate_face(CubeMove::new(face, Counterclockwise));
+        expected.rotate_face(CubeMove::new(face, Counterclockwise));
         let mut result = cube;
-        result.rotate_face(face, Clockwise);
-        result.rotate_face(face, Clockwise);
+        result.rotate_face(CubeMove::new(face, Clockwise));
+        result.rotate_face(CubeMove::new(face, Clockwise));
 
         result == expected
     }
@@ -427,7 +414,7 @@ mod tests {
     fn rotate_front_face_counterclockwise(cube: ArrayCube) -> bool {
         let expected = cube.clone();
         let mut result = cube;
-        result.rotate_face(Front, Counterclockwise);
+        result.rotate_face(CubeMove::new(Front, Counterclockwise));
         let mut expected_front = expected.facelets[Front as usize].clone();
         rotate_face_only(&mut expected_front, Counterclockwise);
         let mut expected_right = expected.get_row(Down as usize, 0);
@@ -481,7 +468,7 @@ mod tests {
         cube.randomize(20, 20);
         let expected = cube.clone();
         let mut result = cube;
-        result.rotate_face(front, Clockwise);
+        result.rotate_face(CubeMove::new(front, Clockwise));
         let mut expected_front = expected.facelets[front as usize].clone();
         rotate_face_only(&mut expected_front, Clockwise);
         assert_eq!(expected_front, result.facelets[front as usize]);
@@ -513,7 +500,7 @@ mod tests {
         cube.randomize(20, 20);
         let expected = cube.clone();
         let mut result = cube;
-        result.rotate_face(Up, Clockwise);
+        result.rotate_face(CubeMove::new(Up, Clockwise));
         let mut expected_front = expected.facelets[Up as usize].clone();
         rotate_face_only(&mut expected_front, Clockwise);
         assert_eq!(expected_front, result.facelets[Up as usize]);
@@ -533,7 +520,7 @@ mod tests {
         cube.randomize(20, 20);
         let expected = cube.clone();
         let mut result = cube;
-        result.rotate_face(Down, Clockwise);
+        result.rotate_face(CubeMove::new(Down, Clockwise));
         let mut expected_front = expected.facelets[Down as usize].clone();
         rotate_face_only(&mut expected_front, Clockwise);
         assert_eq!(expected_front, result.facelets[Down as usize]);
@@ -555,12 +542,12 @@ mod tests {
         let expected = cube.clone();
         let mut result = cube;
         for (face, rotation) in rotations.iter() {
-            result.rotate_face(*face, *rotation);
+            result.rotate_face(CubeMove::new(*face, *rotation));
         }
 
         rotations.reverse();
         for (face, rotation) in rotations {
-            result.rotate_face(face, rotation.get_opposite());
+            result.rotate_face(CubeMove::new(face, rotation.get_opposite()));
         }
 
         result == expected

@@ -6,7 +6,7 @@ mod cube;
 use crate::array_cube::ArrayCube;
 use crate::cube::CubeFace::{Front, Left};
 use crate::cube::Direction::{Clockwise, Counterclockwise};
-use crate::cube::{Color, CUBE_SIZE, NUM_SIDES};
+use crate::cube::{Color, CubeMove, CUBE_SIZE, NUM_SIDES};
 use kiss3d::camera::ArcBall;
 use kiss3d::light::Light;
 use kiss3d::nalgebra::{Point3, Translation3, UnitQuaternion, Vector3};
@@ -165,8 +165,8 @@ fn main() {
         ],
     ]);
     // let mut cube = Cube::default();
-    cube.rotate_face(Front, Clockwise);
-    cube.rotate_face(Left, Counterclockwise);
+    cube.rotate_face(CubeMove::new(Front, Clockwise));
+    cube.rotate_face(CubeMove::new(Left, Counterclockwise));
     // cube.randomize(50, 100);
     // println!("{:?}", cube.solve_recursive());
     add_cube(&mut window, &cube);
