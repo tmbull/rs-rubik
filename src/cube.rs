@@ -3,6 +3,8 @@ use crate::cube::Direction::{Clockwise, Counterclockwise};
 use enum_iterator::Sequence;
 use num_enum::TryFromPrimitive;
 use rand::{thread_rng, Rng};
+use std::fmt::{Debug, Formatter, Write};
+use termion::color;
 
 /// The number of sides of the puzzle. In the case of a cube, the number of sides is 6. It is
 /// unlikely that this solution can be generalized for other shapes, but it would be an interesting
@@ -15,7 +17,7 @@ pub const NUM_SIDES: usize = 6;
 pub const CUBE_SIZE: usize = 3;
 
 /// The cube has 6 colors, one for each side. Arbitrarily, we define whi
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Sequence)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Sequence)]
 #[repr(u8)]
 pub enum Color {
     White = 1,
@@ -24,6 +26,19 @@ pub enum Color {
     Green,
     Red,
     Orange,
+}
+
+impl Debug for Color {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Color::White => f.write_fmt(format_args!("{}W", color::Fg(color::White))),
+            Color::Yellow => f.write_fmt(format_args!("{}Y", color::Fg(color::Yellow))),
+            Color::Blue => f.write_fmt(format_args!("{}B", color::Fg(color::Blue))),
+            Color::Green => f.write_fmt(format_args!("{}G", color::Fg(color::Green))),
+            Color::Red => f.write_fmt(format_args!("{}R", color::Fg(color::Red))),
+            Color::Orange => f.write_fmt(format_args!("{}O", color::Fg(color::Rgb(255, 165, 0)))),
+        }
+    }
 }
 
 /// We are considering only face turns as moves, and are using the
@@ -45,7 +60,7 @@ impl Direction {
 }
 
 /// One of six faces or sides to the cube.
-#[derive(Debug, PartialEq, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, PartialEq, Clone, Copy, Sequence, TryFromPrimitive)]
 #[repr(u8)]
 pub enum CubeFace {
     Up = 0,
@@ -150,7 +165,7 @@ pub trait Cube {
 
 #[cfg(test)]
 mod tests {
-    use crate::cube::{Color, CubeFace, Direction};
+    use crate::cube::{Color, CubeFace, CubeMove, Direction};
     use quickcheck::{Arbitrary, Gen};
     use std::mem;
 
@@ -167,6 +182,15 @@ mod tests {
         fn arbitrary(g: &mut Gen) -> Self {
             let val = u8::arbitrary(g) % NUM_SIDES;
             unsafe { mem::transmute(val as u8) }
+        }
+    }
+
+    impl Arbitrary for CubeMove {
+        fn arbitrary(g: &mut Gen) -> Self {
+            Self {
+                face: CubeFace::arbitrary(g),
+                direction: Direction::arbitrary(g),
+            }
         }
     }
 

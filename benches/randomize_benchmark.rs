@@ -1,6 +1,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use rs_rubik::array_cube::ArrayCube;
 use rs_rubik::cube::Cube;
+use rs_rubik::cubie_cube::CubieCube;
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("randomize_comparison_10-50");
@@ -12,6 +13,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 b.iter_batched(
                     || {
                         let cube = ArrayCube::default();
+                        cube
+                    },
+                    |mut cube| cube.randomize(*num_moves, *num_moves),
+                    BatchSize::SmallInput,
+                )
+            },
+        );
+        group.bench_with_input(
+            BenchmarkId::new("Cubies", num_moves),
+            &num_moves,
+            |b, num_moves| {
+                b.iter_batched(
+                    || {
+                        let cube = CubieCube::default();
                         cube
                     },
                     |mut cube| cube.randomize(*num_moves, *num_moves),

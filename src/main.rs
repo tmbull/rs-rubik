@@ -132,41 +132,41 @@ fn main() {
     // let mut origin = window.add_sphere(0.1);
     // origin.set_color(0.0, 1.0, 0.0);
 
-    let mut cube = ArrayCube::new([
-        [
-            [Color::White, Color::White, Color::White],
-            [Color::White, Color::White, Color::White],
-            [Color::White, Color::White, Color::White],
-        ],
-        [
-            [Color::Green, Color::Green, Color::Green],
-            [Color::Blue, Color::Green, Color::Yellow],
-            [Color::Yellow, Color::Yellow, Color::Blue],
-        ],
-        [
-            [Color::Red, Color::Red, Color::Red],
-            [Color::Red, Color::Red, Color::Green],
-            [Color::Yellow, Color::Orange, Color::Green],
-        ],
-        [
-            [Color::Blue, Color::Blue, Color::Blue],
-            [Color::Red, Color::Blue, Color::Yellow],
-            [Color::Red, Color::Blue, Color::Orange],
-        ],
-        [
-            [Color::Orange, Color::Orange, Color::Orange],
-            [Color::Orange, Color::Orange, Color::Red],
-            [Color::Yellow, Color::Orange, Color::Green],
-        ],
-        [
-            [Color::Red, Color::Blue, Color::Yellow],
-            [Color::Green, Color::Yellow, Color::Yellow],
-            [Color::Orange, Color::Green, Color::Blue],
-        ],
-    ]);
-    // let mut cube = Cube::default();
-    cube.rotate_face(CubeMove::new(Front, Clockwise));
-    cube.rotate_face(CubeMove::new(Left, Counterclockwise));
+    // let mut cube = ArrayCube::new([
+    //     [
+    //         [Color::White, Color::White, Color::White],
+    //         [Color::White, Color::White, Color::White],
+    //         [Color::White, Color::White, Color::White],
+    //     ],
+    //     [
+    //         [Color::Green, Color::Green, Color::Green],
+    //         [Color::Blue, Color::Green, Color::Yellow],
+    //         [Color::Yellow, Color::Yellow, Color::Blue],
+    //     ],
+    //     [
+    //         [Color::Red, Color::Red, Color::Red],
+    //         [Color::Red, Color::Red, Color::Green],
+    //         [Color::Yellow, Color::Orange, Color::Green],
+    //     ],
+    //     [
+    //         [Color::Blue, Color::Blue, Color::Blue],
+    //         [Color::Red, Color::Blue, Color::Yellow],
+    //         [Color::Red, Color::Blue, Color::Orange],
+    //     ],
+    //     [
+    //         [Color::Orange, Color::Orange, Color::Orange],
+    //         [Color::Orange, Color::Orange, Color::Red],
+    //         [Color::Yellow, Color::Orange, Color::Green],
+    //     ],
+    //     [
+    //         [Color::Red, Color::Blue, Color::Yellow],
+    //         [Color::Green, Color::Yellow, Color::Yellow],
+    //         [Color::Orange, Color::Green, Color::Blue],
+    //     ],
+    // ]);
+    let mut cube = ArrayCube::default();
+    // cube.rotate_face(CubeMove::new(Front, Clockwise));
+    // cube.rotate_face(CubeMove::new(Left, Counterclockwise));
     // cube.randomize(50, 100);
     // println!("{:?}", cube.solve_recursive());
     add_cube(&mut window, &cube);

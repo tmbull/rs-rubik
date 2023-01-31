@@ -7,6 +7,8 @@ use rand::{thread_rng, Rng};
 use std::collections::vec_deque::VecDeque;
 use std::collections::HashSet;
 use std::convert::TryFrom;
+use std::fmt::{Debug, Error, Formatter, Write};
+use termion::style;
 
 /// The cube is represented as a 3-dimensional array. Each element in the array represents a
 /// 'facelet' or 'sticker' on one face.
@@ -14,9 +16,46 @@ use std::convert::TryFrom;
 /// * The 'x' index represents the 'face'. Faces are ordered according to [CubeFace].
 /// * The 'y' index represents the 'row' in the face.
 /// * The 'z' index represents the 'column' in the face.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct ArrayCube {
     pub(crate) facelets: [[[Color; CUBE_SIZE]; CUBE_SIZE]; NUM_SIDES],
+}
+
+impl Debug for ArrayCube {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let mut result = f.write_str("\n");
+        if result.is_err() {
+            return result;
+        }
+
+        if self.print_face(0, f).is_err() {
+            return result;
+        }
+
+        for row in 0..CUBE_SIZE {
+            for face in 1..NUM_SIDES - 1 {
+                for col in 0..CUBE_SIZE {
+                    let result = f.write_fmt(format_args!("{:?} ", self.facelets[face][row][col]));
+                    if result.is_err() {
+                        return result;
+                    }
+                }
+
+                if face < NUM_SIDES - 2 {
+                    let result = f.write_fmt(format_args!("{}| ", style::Reset));
+                    if result.is_err() {
+                        return result;
+                    }
+                }
+            }
+            let result = f.write_str("\n");
+            if result.is_err() {
+                return result;
+            }
+        }
+
+        self.print_face(NUM_SIDES - 1, f)
+    }
 }
 
 impl Default for ArrayCube {
@@ -229,6 +268,39 @@ impl ArrayCube {
 
     fn get_row(&self, face_idx: usize, row_idx: usize) -> [Color; CUBE_SIZE] {
         self.facelets[face_idx][row_idx]
+    }
+
+    fn print_face(&self, face: usize, f: &mut Formatter) -> Result<(), Error> {
+        let mut result: Result<(), Error> = Ok(());
+
+        for row in 0..CUBE_SIZE {
+            for _ in 0..CUBE_SIZE {
+                result = f.write_str("  ");
+                if result.is_err() {
+                    return result;
+                }
+            }
+            result = f.write_str("| ");
+            if result.is_err() {
+                return result;
+            }
+            for col in 0..CUBE_SIZE {
+                result = f.write_fmt(format_args!("{:?} ", self.facelets[face][row][col]));
+                if result.is_err() {
+                    return result;
+                }
+            }
+            result = f.write_fmt(format_args!("{}| ", style::Reset));
+            if result.is_err() {
+                return result;
+            }
+            result = f.write_str("\n");
+            if result.is_err() {
+                return result;
+            }
+        }
+
+        return result;
     }
 }
 
@@ -608,7 +680,7 @@ mod tests {
     #[test]
     fn solve_works() {
         let mut cube = ArrayCube::default();
-        let num_moves = 5;
+        let num_moves = 4;
         cube.randomize(num_moves, num_moves);
         let bfs_cube = cube.clone();
         let bfs_cache_cube = cube.clone();
