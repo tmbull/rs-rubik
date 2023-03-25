@@ -11,13 +11,12 @@ use crate::cube::{Color, Cube, CubeFace, CubeMove, Direction, CUBE_SIZE, NUM_SID
 use crate::cubie_cube::CornersIndex::{DLB, DLF, DRB, DRF, ULB, ULF, URB, URF};
 use crate::cubie_cube::EdgesIndex::{BL, BR, DB, DF, DL, DR, FL, FR, UB, UF, UL, UR};
 use enum_iterator::{all, Sequence};
-use kiss3d::event::Key::B;
 use num_enum::TryFromPrimitive;
 
 const NUM_EDGES: usize = 12;
 const NUM_CORNERS: usize = 8;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TryFromPrimitive)]
 #[repr(u8)]
 enum EdgeOrientation {
     Oriented = 0,
@@ -27,8 +26,8 @@ enum EdgeOrientation {
 /// An 'edge' of the cube. Each edge has two facelets. They facelet corresponding to index 0
 /// represents the primary direction of the edge. For edges along the up/down faces the primary
 /// direction is up/down. For edges along the left/right faces, the primary direction is left/right.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Edge {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Edge {
     index: EdgesIndex,
     orientation: EdgeOrientation,
 }
@@ -42,7 +41,7 @@ impl Default for Edge {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Sequence, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Sequence, TryFromPrimitive)]
 #[repr(u8)]
 pub enum EdgesIndex {
     UB = 0,
@@ -59,9 +58,9 @@ pub enum EdgesIndex {
     DR = 11,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, TryFromPrimitive)]
 #[repr(u8)]
-enum CornerOrientation {
+pub enum CornerOrientation {
     Oriented = 0,
     RotatedCW = 1,
     RotatedCCW = 2,
@@ -70,10 +69,20 @@ enum CornerOrientation {
 /// A 'corner' of the cube. Each corner has 3 facelets. The facelet corresponding to index 0
 /// represents the primary direction of the corner. The primary direction of each corner is always
 /// up/down. The other facelets are arranged in clockwise order in the array.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Corner {
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct Corner {
     index: CornersIndex,
     orientation: CornerOrientation,
+}
+
+impl Corner {
+    pub fn get_index(&self) -> CornersIndex {
+        self.index
+    }
+
+    pub fn get_orientation(&self) -> CornerOrientation {
+        self.orientation
+    }
 }
 
 impl Default for Corner {
@@ -85,7 +94,7 @@ impl Default for Corner {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Sequence, TryFromPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Sequence, TryFromPrimitive)]
 #[repr(u8)]
 pub enum CornersIndex {
     ULB = 0,
@@ -98,6 +107,7 @@ pub enum CornersIndex {
     DRF = 7,
 }
 
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub struct CubieCube {
     corners: [Corner; NUM_CORNERS],
     edges: [Edge; NUM_EDGES],
@@ -128,7 +138,15 @@ impl Default for CubieCube {
 }
 
 impl CubieCube {
-    fn to_array_cube(&self) -> ArrayCube {
+    pub fn get_edge(&self, edge_index: EdgesIndex) -> Edge {
+        self.edges[edge_index as usize]
+    }
+
+    pub fn get_corner(&self, corner_index: CornersIndex) -> Corner {
+        self.corners[corner_index as usize]
+    }
+
+    pub fn to_array_cube(&self) -> ArrayCube {
         let mut colors = [[[White; CUBE_SIZE]; CUBE_SIZE]; NUM_SIDES];
         for face in all::<CubeFace>() {
             for row in 0..CUBE_SIZE {
@@ -211,7 +229,7 @@ impl CubieCube {
         face
     }
 
-    fn get_corner_colors(&self, corner_idx: CornersIndex) -> [Color; 3] {
+    pub fn get_corner_colors(&self, corner_idx: CornersIndex) -> [Color; 3] {
         let corner = self.corners[corner_idx as usize];
         let mut colors = match corner.index as CornersIndex {
             ULB => [White, Green, Orange],
@@ -562,7 +580,6 @@ mod test {
     use crate::cubie_cube::CubieCube;
     use quickcheck_macros::quickcheck;
     use rstest::rstest;
-    use std::borrow::BorrowMut;
 
     #[test]
     fn default_cube_matches_default_arraycube() {
@@ -615,7 +632,7 @@ mod test {
 
         for mv in rotations {
             array_cube.cube_move(mv);
-            cubie_cube.cube_move((mv))
+            cubie_cube.cube_move(mv)
         }
 
         let result = cubie_cube.to_array_cube();

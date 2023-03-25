@@ -2,11 +2,7 @@ use crate::cube::Color::*;
 use crate::cube::CubeFace::*;
 use crate::cube::Direction::{Clockwise, Counterclockwise};
 use crate::cube::{Color, Cube, CubeFace, CubeMove, Direction, ALL_MOVES, CUBE_SIZE, NUM_SIDES};
-use kiss3d::ncollide3d::query::algorithms::gjk::directional_distance;
-use rand::{thread_rng, Rng};
-use std::collections::vec_deque::VecDeque;
 use std::collections::HashSet;
-use std::convert::TryFrom;
 use std::fmt::{Debug, Error, Formatter, Write};
 use termion::style;
 
@@ -197,67 +193,6 @@ impl ArrayCube {
         }
     }
 
-    /// The naive solution is a simple BFS. The cube has 12 possible moves (rotate each face in
-    /// either direction). At each iteration, we check if the cube is solved. Then we perform all
-    /// 12 moves, and recurse into the resulting cubes.
-    pub fn solve_bfs_nocache(&self) -> Vec<CubeMove> {
-        let mut queue: VecDeque<(ArrayCube, Vec<CubeMove>)> = VecDeque::new();
-        let moves: Vec<CubeMove> = Vec::new();
-
-        queue.push_front((self.clone(), moves));
-        while let Some((cube, moves)) = queue.pop_front() {
-            if cube.is_solved() {
-                return moves;
-            }
-            for cubeMove in ALL_MOVES {
-                let mut cube = cube.clone();
-                cube.rotate_face(cubeMove);
-                let mut moves = moves.clone();
-                moves.push(cubeMove);
-                queue.push_back((cube, moves));
-            }
-        }
-
-        return Vec::new();
-    }
-
-    pub fn solve_iddfs(&self) -> Option<Vec<CubeMove>> {
-        for depth in 0..26 {
-            let (found, remaining) = self.dls(Vec::new(), depth);
-            if found != None {
-                return found;
-            } else if !remaining {
-                return None;
-            }
-        }
-
-        None
-    }
-
-    fn dls(&self, moves: Vec<CubeMove>, depth: u8) -> (Option<Vec<CubeMove>>, bool) {
-        return if depth == 0 {
-            if self.is_solved() {
-                (Some(moves), true)
-            } else {
-                (None, true) //   (Not found, but may have children)
-            }
-        } else {
-            let mut any_remaining = false;
-            for cubeMove in ALL_MOVES {
-                let mut moves = moves.clone();
-                moves.push(cubeMove);
-                let mut cube = self.clone();
-                cube.rotate_face(cubeMove);
-                let (found, remaining) = cube.dls(moves, depth - 1);
-                if found != None {
-                    return (found, true);
-                }
-                any_remaining = remaining; // (At least one node found at depth, let IDDFS deepen)
-            }
-            (None, any_remaining)
-        };
-    }
-
     fn get_col(&self, face_idx: usize, col_idx: usize) -> [Color; CUBE_SIZE] {
         [
             self.facelets[face_idx][0][col_idx],
@@ -322,34 +257,6 @@ impl Cube for ArrayCube {
 
     fn cube_move(&mut self, cube_move: CubeMove) {
         self.rotate_face(cube_move);
-    }
-
-    /// The naive solution is a simple BFS. The cube has 12 possible moves (rotate each face in
-    /// either direction). At each iteration, we check if the cube is solved. Then we perform all
-    /// 12 moves, and recurse into the resulting cubes.
-    fn solve(&self) -> Vec<CubeMove> {
-        let mut queue: VecDeque<(ArrayCube, Vec<CubeMove>)> = VecDeque::new();
-        let moves: Vec<CubeMove> = Vec::new();
-        let mut tested: HashSet<ArrayCube> = HashSet::new();
-        tested.insert(self.clone());
-        queue.push_front((self.clone(), moves));
-        while let Some((cube, moves)) = queue.pop_front() {
-            if cube.is_solved() {
-                return moves;
-            }
-            for cubeMove in ALL_MOVES {
-                let mut cube = cube.clone();
-                cube.rotate_face(cubeMove);
-                if !tested.contains(&cube) {
-                    tested.insert(cube.clone());
-                    let mut moves = moves.clone();
-                    moves.push(cubeMove);
-                    queue.push_back((cube, moves));
-                }
-            }
-        }
-
-        return Vec::new();
     }
 }
 
