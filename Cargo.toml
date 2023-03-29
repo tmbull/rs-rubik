@@ -28,11 +28,13 @@ harness = false
 [dependencies]
 arr_macro = "0.2.1"
 bitvec = "1.0.1"
+derivative = "2.2.0"
 enum-iterator = "1.2.0"
 itertools = "0.10.5"
 kiss3d = "0.35.0"
 num_enum = "0.5.7"
 rand = "0.8.5"
+tempfile = "3.4.0"
 termion = "2.0.1"
 
 [dev-dependencies]

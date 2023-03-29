@@ -1,14 +1,18 @@
 use crate::cube::Cube;
 use crate::cubie_cube::CubieCube;
+use derivative::Derivative;
 use std::error::Error;
+use std::fmt::{Debug, Formatter};
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
-
 const DEFAULT_VAL: u8 = 0xFF;
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 struct PatternDatabase<const N: usize> {
     db: [u8; N],
     num_items: usize,
+    #[derivative(Debug = "ignore")]
     get_index: fn(&CubieCube) -> usize,
 }
 
@@ -61,10 +65,10 @@ impl<const N: usize> PatternDatabase<N> {
     }
 
     fn to_file(&self, file_path: &str) -> Result<(), std::io::Error> {
-        File::create(file_path).and_then(|mut file| {
-            file.write_all(self.db.as_slice())
-                .and_then(|()| file.write_all(self.num_items.to_le_bytes().as_slice()))
-        })
+        let mut file = File::create(file_path)?;
+        file.write_all(N.to_le_bytes().as_slice())?;
+        file.write_all(self.db.as_slice())?;
+        file.write_all(self.num_items.to_le_bytes().as_slice())
     }
 
     fn from_file(
@@ -105,6 +109,7 @@ mod tests {
     use enum_iterator::{all, cardinality};
     use rand::prelude::SliceRandom;
     use rand::thread_rng;
+    use tempfile::{tempfile, NamedTempFile};
 
     // A Simple DB with 8 elements (since the  corner can be in 8 different positions)
     fn get_ulb_index(cube: &CubieCube) -> usize {
@@ -144,6 +149,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn set_index_twice_returns_false() {
         let mut db = PatternDatabase::<8>::new(get_ulb_index);
         assert!(db.set_num_moves_for_index(0, 5));
@@ -179,5 +185,29 @@ mod tests {
         for i in 0..db.get_size() {
             assert_eq!(moves[i].len() as u8, db.get_num_moves(&positions[i]));
         }
+    }
+
+    #[test]
+    fn to_from_file_works() {
+        let f = NamedTempFile::new().unwrap();
+
+        let mut db = PatternDatabase::<8>::new(get_ulb_index);
+        let mut vals: Vec<u8> = (0u8..db.get_size() as u8).collect();
+        let mut rng = thread_rng();
+        vals.shuffle(&mut rng);
+        for i in 0..db.get_size() {
+            assert!(db.set_num_moves_for_index(i, vals[i]));
+        }
+
+        let write_result = db.to_file(f.path().to_str().unwrap());
+        assert!(write_result.is_ok());
+        let read_result =
+            PatternDatabase::<8>::from_file(f.path().to_str().unwrap(), get_ulb_index);
+        assert!(read_result.is_ok());
+        let read_db = read_result.unwrap();
+
+        assert_eq!(db.get_size(), read_db.get_size());
+        assert_eq!(db.get_num_items(), read_db.get_num_items());
+        assert_eq!(db.db, read_db.db);
     }
 }
